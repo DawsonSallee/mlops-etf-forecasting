@@ -1,5 +1,0 @@
-outs:
-- md5: 18984e8aaf05d4d9bbf9fb22bbab768b
-  size: 1036967
-  hash: md5
-  path: etf_features.parquet
