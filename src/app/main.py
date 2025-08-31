@@ -21,6 +21,7 @@ def generate_inference_features(live_data_df):
 # --- FastAPI App ---
 app = FastAPI(title="ETF Trend Forecaster API", version="1.0")
 
+# Set the tracking URI for the container environment
 mlflow.set_tracking_uri("file:/app/mlruns")
 
 # Load the production model from the MLflow Model Registry on startup
@@ -28,8 +29,18 @@ MODEL_NAME = "etf-xgboost-predictor"
 MODEL_STAGE = "Production"
 model = None
 try:
-    model = mlflow.pyfunc.load_model(model_uri=f"models:/{MODEL_NAME}/{MODEL_STAGE}")
-    print(f"Successfully loaded model '{MODEL_NAME}' version/stage '{MODEL_STAGE}'")
+    client = mlflow.tracking.MlflowClient()
+    # Get the latest version of the model in the "Production" stage
+    prod_version = client.get_latest_versions(MODEL_NAME, stages=[MODEL_STAGE])[0]
+    
+    # Construct a portable URI using the model's run_id and the artifact path
+    # This forces MLflow to look for artifacts relative to the run, bypassing the bad absolute path.
+    model_uri = f"runs:/{prod_version.run_id}/xgb-model"
+    
+    print(f"Loading model '{MODEL_NAME}' version {prod_version.version} from URI: {model_uri}")
+    model = mlflow.pyfunc.load_model(model_uri)
+    print(f"Successfully loaded model '{MODEL_NAME}'")
+    
 except Exception as e:
     print(f"FATAL: Could not load model from MLflow. Check server logs. Error: {e}")
 
