@@ -2,61 +2,119 @@
 import streamlit as st
 import pandas as pd
 import mlflow
-import joblib
-import shap
-import matplotlib.pyplot as plt
+import sys
 from pathlib import Path
 
-# --- Page Configuration ---
-st.set_page_config(page_title="ETF Trend Forecaster", page_icon="📈", layout="wide")
+# --- Path Setup ---
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+from config import MLFLOW_TRACKING_URI, MODEL_NAME
 
-# --- Asset Loading ---
+# --- Page Config ---
+st.set_page_config(page_title="Model Comparison Dashboard", page_icon="🔬", layout="wide")
+
+# --- MLflow Setup ---
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+client = mlflow.tracking.MlflowClient()
+
+# --- Data Loading ---
 @st.cache_resource
-def load_production_model_and_assets():
-    # This path construct works when running `streamlit run dashboard/app.py` from the root
-    project_root = Path(__file__).resolve().parent.parent
-    mlruns_path = "file:" + str(project_root / "mlruns")
-    mlflow.set_tracking_uri(mlruns_path)
-    
-    model_name = "etf-xgboost-predictor"
-    
-    model = mlflow.pyfunc.load_model(model_uri=f"models:/{model_name}/Production")
-    
-    client = mlflow.tracking.MlflowClient()
-    model_version_details = client.get_latest_versions(model_name, stages=["Production"])[0]
-    run_id = model_version_details.run_id
-    
-    # Download artifacts to a temporary directory
-    local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="shap_assets")
-    
-    explainer = joblib.load(Path(local_path) / "explainer.joblib")
-    x_test_for_shap = pd.read_parquet(Path(local_path) / "X_test.parquet")
-    
-    return model, explainer, x_test_for_shap
+def load_test_data_and_models():
+    """Finds the most recent experiment run and loads its test data and all logged models."""
+    # Fetch the most recent "champion" run to get the correct X_test
+    try:
+        champion_run = mlflow.search_runs(
+            experiment_names=["ETF_Trend_Prediction"],
+            filter_string="tags.mlflow.runName = 'XGBoost_Tuned_Champion'",
+            order_by=["start_time DESC"],
+            max_results=1
+        ).iloc[0]
+        run_id = champion_run.run_id
+    except IndexError:
+        return None, None, "Could not find a 'XGBoost_Tuned_Champion' run. Please execute the training pipeline."
+    except Exception as e:
+        return None, None, f"An error occurred fetching the latest run: {e}"
 
-try:
-    model, explainer, x_test_for_shap = load_production_model_and_assets()
-    st.success("Production model and SHAP assets loaded successfully from MLflow!")
-except Exception as e:
-    st.error(f"Error loading model from MLflow: {e}. Please ensure you have run the full training pipeline first.")
-    st.stop()
+    # Download X_test artifact
+    try:
+        local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="shap_assets")
+        x_test = pd.read_parquet(Path(local_path) / "X_test.parquet")
+    except Exception as e:
+        return None, None, f"Failed to load test data from run {run_id}: {e}"
+
+    # --- Model Loading ---
+    # Models are logged in separate runs, but we can find them in the same experiment
+    models = {}
+    model_run_names = {
+        "Logistic Regression": "LogisticRegression_Baseline",
+        "Random Forest": "RandomForest_Baseline",
+        "XGBoost (Tuned)": "XGBoost_Tuned_Champion",
+        "MLP": "MLP_Manual_Baseline"
+    }
+    model_artifact_paths = {
+        "Logistic Regression": "logistic-regression-model",
+        "Random Forest": "random-forest-model",
+        "XGBoost (Tuned)": "xgb-model",
+        "MLP": "mlp-model"
+    }
+
+    for name, run_name in model_run_names.items():
+        try:
+            run = mlflow.search_runs(
+                experiment_names=["ETF_Trend_Prediction"],
+                filter_string=f"tags.mlflow.runName = '{run_name}'",
+                order_by=["start_time DESC"],
+                max_results=1
+            ).iloc[0]
+            
+            model_uri = f"runs:/{run.run_id}/{model_artifact_paths[name]}"
+            models[name] = mlflow.pyfunc.load_model(model_uri)
+        except (IndexError, Exception) as e:
+            st.warning(f"Could not load model '{name}'. Run the full training notebook. Error: {e}")
+            models[name] = None
+            
+    return x_test, models, None
+
+# --- Main App ---
+st.title("🔬 Model Comparison Dashboard")
+st.markdown("Compare predictions from all trained models for the latest data point.")
+
+x_test, models, error = load_test_data_and_models()
+
+if error:
+    st.error(error)
+else:
+    st.success("Test data and models loaded successfully!")
     
-# --- UI Components ---
-st.title("📈 ETF Trend Forecaster")
-st.write("This application uses the **production-stage** XGBoost model from our MLflow registry to predict the next-day price movement for the SPY ETF.")
+    st.subheader("Latest Data Point")
+    latest_data = x_test.tail(1)
+    st.dataframe(latest_data)
 
-if st.button("Get Prediction", type="primary"):
-    with st.spinner("Analyzing latest data..."):
-        feature_vector = x_test_for_shap.tail(1)
-        prediction = model.predict(feature_vector)[0]
-        label = "UP" if prediction == 1 else "DOWN"
-        
-        if label == "UP": st.success(f"Prediction: **{label}**")
-        else: st.error(f"Prediction: **{label}**")
+    st.subheader("Model Predictions")
+    
+    predictions = {}
+    for name, model in models.items():
+        if model:
+            try:
+                if name == "MLP":
+                    # PyTorch model returns probabilities in a DataFrame
+                    prob = model.predict(latest_data).iloc[0, 0]
+                    pred_class = 1 if prob > 0.5 else 0
+                else:
+                    # Sklearn models return class labels in a numpy array
+                    pred_class = model.predict(latest_data)[0]
+                
+                predictions[name] = "UP" if pred_class == 1 else "DOWN"
+            except Exception as e:
+                predictions[name] = f"Error: {e}"
+        else:
+            predictions[name] = "Not Loaded"
+            
+    # Display predictions in columns
+    cols = st.columns(len(models))
+    for idx, (name, pred) in enumerate(predictions.items()):
+        with cols[idx]:
+            st.metric(label=name, value=pred)
 
-        st.subheader("🧠 Prediction Explanation")
-        shap_values = explainer.shap_values(feature_vector)
-        st.pyplot(shap.force_plot(explainer.expected_value, shap_values, feature_vector, matplotlib=True))
-
-st.subheader("Overall Feature Importance")
-st.pyplot(shap.summary_plot(explainer.shap_values(x_test_for_shap), x_test_for_shap, plot_type='bar'))
+    st.info("Note: The MLP model requires scaled data for optimal performance. Predictions here are on unscaled data and may differ from its performance during training.")
