@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1756666471825
+current_stage: Production
+description: null
+last_updated_timestamp: 1756666471944
+name: etf-xgboost-predictor
+run_id: d970eed04df64da78b80794c44aac6d3
+run_link: null
+source: file:C:\Users\dawso\Dev\Personal\AIGrind\mlops-etf-forecasting\mlruns/729986291096297859/d970eed04df64da78b80794c44aac6d3/artifacts/xgb-model
+status: READY
+status_message: null
+storage_location: file:C:\Users\dawso\Dev\Personal\AIGrind\mlops-etf-forecasting\mlruns/729986291096297859/d970eed04df64da78b80794c44aac6d3/artifacts/xgb-model
+user_id: null
+version: 4

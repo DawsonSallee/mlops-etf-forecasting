@@ -1,0 +1,15 @@
+artifact_uri: file:C:\Users\dawso\Dev\Personal\AIGrind\mlops-etf-forecasting\mlruns/729986291096297859/05ab37bc3a86439f939c53f3d03ac54a/artifacts
+end_time: 1756665309246
+entry_point_name: ''
+experiment_id: '729986291096297859'
+lifecycle_stage: active
+run_id: 05ab37bc3a86439f939c53f3d03ac54a
+run_name: XGBoost_Tuned_Champion
+run_uuid: 05ab37bc3a86439f939c53f3d03ac54a
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756665305717
+status: 3
+tags: []
+user_id: dawso
