@@ -6,9 +6,9 @@ This project demonstrates a complete, end-to-end MLOps workflow for a time-serie
 
 ### Live Dashboard Preview
 
-*(This is a placeholder for a GIF or screenshot of the final Streamlit application)*
+*(A preview of the interactive Streamlit dashboard)*
 
-![Dashboard Preview](https://via.placeholder.com/800x400.png?text=Live+Dashboard+Screenshot+Here)
+![Dashboard Preview](./docs/images/ProjectDashboard.png)
 
 ---
 
